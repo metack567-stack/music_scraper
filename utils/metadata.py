@@ -1,7 +1,7 @@
 import os
 import logging
 from mutagen import File
-from mutagen.id3 import ID3, TIT2, TPE1, TALB, TDRC, TCON, USLT
+from mutagen.id3 import ID3, TIT2, TPE1, TALB, TDRC, TCON, USLT, APIC
 from mutagen.mp4 import MP4, MP4Cover
 import eyed3
 from datetime import datetime
@@ -254,6 +254,127 @@ class MusicMetadataExtractor:
                 return True
         except Exception as e:
             logger.error(f"Error writing lyrics to OGG: {str(e)}")
+            return False
+    
+    def write_album_art(self, file_path, artwork_url, artwork_data=None):
+        """Write album artwork to audio file"""
+        try:
+            if not os.path.exists(file_path):
+                return False
+            
+            file_ext = os.path.splitext(file_path)[1].lower()[1:]
+            
+            # Download artwork if URL provided and no data available
+            if artwork_url and not artwork_data:
+                artwork_data = self._download_artwork(artwork_url)
+                if not artwork_data:
+                    return False
+            
+            if not artwork_data:
+                return False
+            
+            # Write artwork based on file format
+            if file_ext == 'mp3':
+                return self._write_album_art_to_mp3(file_path, artwork_data)
+            elif file_ext == 'flac':
+                return self._write_album_art_to_flac(file_path, artwork_data)
+            elif file_ext == 'm4a':
+                return self._write_album_art_to_m4a(file_path, artwork_data)
+            else:
+                logger.warning(f"Unsupported format for album art: {file_ext}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error writing album art to file: {str(e)}")
+            return False
+    
+    def _download_artwork(self, url):
+        """Download artwork from URL"""
+        try:
+            import requests
+            
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            
+            # Validate image
+            content_type = response.headers.get('content-type', '')
+            if content_type.startswith('image/'):
+                return response.content
+            else:
+                logger.warning(f"Invalid content type: {content_type}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error downloading artwork: {str(e)}")
+            return None
+    
+    def _write_album_art_to_mp3(self, file_path, artwork_data):
+        """Write album art to MP3 file using ID3 APIC tag"""
+        try:
+            audio_file = File(file_path)
+            if isinstance(audio_file, ID3):
+                # Remove existing album art
+                audio_file.delall('APIC')
+                
+                # Add new album art
+                audio_file.add(APIC(
+                    encoding=3,
+                    mime='image/jpeg',
+                    type=3,  # 3 = front cover
+                    desc='Cover',
+                    data=artwork_data
+                ))
+                audio_file.save()
+                return True
+            else:
+                # Add ID3 tag if none exists
+                audio_file.add_tags()
+                audio_file.add(APIC(
+                    encoding=3,
+                    mime='image/jpeg',
+                    type=3,  # 3 = front cover
+                    desc='Cover',
+                    data=artwork_data
+                ))
+                audio_file.save()
+                return True
+        except Exception as e:
+            logger.error(f"Error writing album art to MP3: {str(e)}")
+            return False
+    
+    def _write_album_art_to_flac(self, file_path, artwork_data):
+        """Write album art to FLAC file"""
+        try:
+            audio_file = File(file_path)
+            if hasattr(audio_file, 'tags') and audio_file.tags:
+                # Remove existing pictures
+                if 'PICTURE' in audio_file.tags:
+                    del audio_file.tags['PICTURE']
+                
+                # Add new picture
+                audio_file.tags['PICTURE'] = artwork_data
+                audio_file.save()
+                return True
+        except Exception as e:
+            logger.error(f"Error writing album art to FLAC: {str(e)}")
+            return False
+    
+    def _write_album_art_to_m4a(self, file_path, artwork_data):
+        """Write album art to M4A file"""
+        try:
+            audio_file = File(file_path)
+            if hasattr(audio_file, 'tags') and audio_file.tags:
+                # Remove existing artwork
+                keys_to_remove = [k for k in audio_file.tags.keys() if k.startswith('covr')]
+                for key in keys_to_remove:
+                    del audio_file.tags[key]
+                
+                # Add new artwork
+                audio_file.tags['covr'] = [artwork_data]
+                audio_file.save()
+                return True
+        except Exception as e:
+            logger.error(f"Error writing album art to M4A: {str(e)}")
             return False
     
     def get_file_info(self, file_path):

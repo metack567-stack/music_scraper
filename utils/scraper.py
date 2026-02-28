@@ -157,15 +157,173 @@ class MusicScraper:
             return None
     
     def search_album_art(self, artist, album):
-        """Search for album artwork"""
+        """Search for album artwork using multiple sources"""
         try:
-            # This would typically use services like iTunes, Spotify, etc.
-            # For now, return placeholder
-            return {
-                'found': False,
-                'url': None,
-                'source': None
-            }
+            # Clean input
+            clean_artist = self._clean_artist(artist)
+            clean_album = self._clean_album(album)
+            
+            # Try different sources in order
+            sources = [
+                self._search_itunes,
+                self._search_musicbrainz,
+                self._search_cover_art_archive
+            ]
+            
+            for source_func in sources:
+                try:
+                    result = source_func(artist, album)
+                    if result.get('found'):
+                        logger.info(f"Found album art from {result['source']}")
+                        return result
+                except Exception as e:
+                    logger.warning(f"Source {source_func.__name__} failed: {str(e)}")
+                    continue
+            
+            return {'found': False, 'url': None, 'source': None}
+            
         except Exception as e:
             logger.error(f"Album art search error: {str(e)}")
             return {'found': False, 'url': None, 'source': None}
+    
+    def _search_itunes(self, artist, album):
+        """Search iTunes API for album artwork"""
+        try:
+            base_url = "https://itunes.apple.com/search"
+            
+            query = f"{artist} {album}"
+            params = {
+                'term': query,
+                'media': 'music',
+                'entity': 'album',
+                'limit': 5
+            }
+            
+            response = self.session.get(base_url, params=params, timeout=10)
+            response.raise_for_status()
+            
+            data = response.json()
+            results = data.get('results', [])
+            
+            if results:
+                # Get the first result (highest relevance)
+                result = results[0]
+                artwork_url = result.get('artworkUrl100', '').replace('100x100', '1200x1200')
+                
+                return {
+                    'found': True,
+                    'url': artwork_url,
+                    'source': 'itunes',
+                    'raw_data': result
+                }
+            
+            return {'found': False, 'url': None, 'source': None}
+            
+        except Exception as e:
+            logger.error(f"iTunes search error: {str(e)}")
+            return {'found': False, 'url': None, 'source': None}
+    
+    def _search_musicbrainz(self, artist, album):
+        """Search MusicBrainz for album artwork"""
+        try:
+            base_url = "https://musicbrainz.org/ws/2/release/"
+            
+            # Search for release
+            query = f"artist:\"{artist}\" release:\"{album}\""
+            params = {
+                'query': query,
+                'limit': 5,
+                'fmt': 'json'
+            }
+            
+            response = self.session.get(base_url, params=params, timeout=10)
+            response.raise_for_status()
+            
+            data = response.json()
+            releases = data.get('releases', [])
+            
+            if releases:
+                release_id = releases[0].get('id')
+                return self._get_release_artwork(release_id)
+            
+            return {'found': False, 'url': None, 'source': None}
+            
+        except Exception as e:
+            logger.error(f"MusicBrainz search error: {str(e)}")
+            return {'found': False, 'url': None, 'source': None}
+    
+    def _get_release_artwork(self, release_id):
+        """Get artwork for a specific MusicBrainz release"""
+        try:
+            base_url = f"https://musicbrainz.org/ws/2/release/{release_id}"
+            params = {
+                'inc': 'release-rels',
+                'fmt': 'json'
+            }
+            
+            response = self.session.get(base_url, params=params, timeout=10)
+            response.raise_for_status()
+            
+            data = response.json()
+            
+            # Look for artwork URLs in release relations
+            for relation in data.get('relations', []):
+                if relation.get('type') == 'release cover art':
+                    url = relation.get('url')
+                    if url:
+                        return {
+                            'found': True,
+                            'url': url,
+                            'source': 'musicbrainz',
+                            'release_id': release_id
+                        }
+            
+            return {'found': False, 'url': None, 'source': None}
+            
+        except Exception as e:
+            logger.error(f"Release artwork fetch error: {str(e)}")
+            return {'found': False, 'url': None, 'source': None}
+    
+    def _search_cover_art_archive(self, artist, album):
+        """Search Cover Art Archive for album artwork"""
+        try:
+            base_url = "https://musicbrainz.org/ws/2/release/"
+            
+            # Search for release
+            query = f"artist:\"{artist}\" release:\"{album}\""
+            params = {
+                'query': query,
+                'limit': 1,
+                'fmt': 'json'
+            }
+            
+            response = self.session.get(base_url, params=params, timeout=10)
+            response.raise_for_status()
+            
+            data = response.json()
+            releases = data.get('releases', [])
+            
+            if releases:
+                release_id = releases[0].get('id')
+                caa_url = f"https://coverartarchive.org/release/{release_id}"
+                
+                return {
+                    'found': True,
+                    'url': caa_url,
+                    'source': 'coverartarchive',
+                    'release_id': release_id
+                }
+            
+            return {'found': False, 'url': None, 'source': None}
+            
+        except Exception as e:
+            logger.error(f"Cover Art Archive search error: {str(e)}")
+            return {'found': False, 'url': None, 'source': None}
+    
+    def _clean_artist(self, artist):
+        """Clean artist name for URL"""
+        return artist.replace(' ', '-').lower().replace('\'', '').replace('&', 'and')
+    
+    def _clean_album(self, album):
+        """Clean album name for URL"""
+        return album.replace(' ', '-').lower().replace('\'', '').replace('(', '').replace(')', '').replace('&', 'and')

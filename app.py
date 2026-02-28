@@ -60,7 +60,20 @@ def upload_file():
                     lyrics_added = True
                     logger.info(f"Lyrics added to {file_path} from {lyrics_result['source']}")
             
-            # Store in database (without lyrics)
+            # Search for album artwork and write directly to file
+            album_art_added = False
+            if metadata.get('artist') and metadata.get('album'):
+                artwork_result = scraper.search_album_art(metadata['artist'], metadata['album'])
+                if artwork_result.get('found'):
+                    # Download and write album art directly to file
+                    artwork_data = metadata_extractor._download_artwork(artwork_result['url'])
+                    if artwork_data:
+                        success = metadata_extractor.write_album_art(file_path, artwork_result['url'], artwork_data)
+                        if success:
+                            album_art_added = True
+                            logger.info(f"Album art added to {file_path} from {artwork_result['source']}")
+            
+            # Store in database (without lyrics or album art)
             file_id = db.add_music_file(metadata_extractor.get_file_info(file_path))
             db.add_metadata(file_id, metadata)
             
@@ -81,7 +94,9 @@ def upload_file():
                 'metadata': metadata,
                 'message': 'File uploaded and processed successfully',
                 'lyrics_added': lyrics_added,
-                'lyrics_source': 'web' if lyrics_added else None
+                'album_art_added': album_art_added,
+                'lyrics_source': 'web' if lyrics_added else None,
+                'album_art_source': 'web' if album_art_added else None
             })
         
         return jsonify({'error': 'Invalid file type'}), 400
@@ -264,6 +279,62 @@ def add_lyrics(file_id):
         
     except Exception as e:
         logger.error(f"Lyrics add error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/add-album-art/<int:file_id>', methods=['POST'])
+def add_album_art(file_id):
+    """Add album artwork directly to a specific file - no database storage"""
+    try:
+        # Get file info to update the file
+        file_info = db.get_music_file(file_id)
+        if not file_info:
+            return jsonify({'error': 'File not found'}), 404
+        
+        # Extract existing metadata to get artist and album
+        metadata = db.get_metadata(file_id)
+        if not metadata:
+            return jsonify({'error': 'Metadata not found'}), 404
+        
+        artist = metadata.get('artist', '')
+        album = metadata.get('album', '')
+        
+        if not artist or not album:
+            return jsonify({'error': 'Artist or album not available'}), 400
+        
+        # Search for album artwork
+        artwork_result = scraper.search_album_art(artist, album)
+        
+        if artwork_result.get('found'):
+            # Download and write album art directly to file
+            artwork_data = metadata_extractor._download_artwork(artwork_result['url'])
+            if artwork_data:
+                success = metadata_extractor.write_album_art(file_info['file_path'], artwork_result['url'], artwork_data)
+                
+                if success:
+                    logger.info(f"Album art added to {file_info['file_path']} from {artwork_result['source']}")
+                    return jsonify({
+                        'success': True,
+                        'source': artwork_result['source'],
+                        'message': f'Album art added from {artwork_result["source"]}'
+                    })
+                else:
+                    return jsonify({
+                        'success': False,
+                        'message': 'Failed to write album art to file'
+                    })
+            else:
+                return jsonify({
+                    'success': False,
+                    'message': 'Failed to download album art'
+                })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'No album art found for this album'
+            })
+        
+    except Exception as e:
+        logger.error(f"Album art add error: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
