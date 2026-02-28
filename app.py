@@ -50,18 +50,17 @@ def upload_file():
             # Extract metadata
             metadata = metadata_extractor.extract_metadata(file_path)
             
-            # Search for lyrics
+            # Search for lyrics and write directly to file
+            lyrics_added = False
             if metadata.get('artist') and metadata.get('title'):
                 lyrics_result = scraper.search_lyrics(metadata['artist'], metadata['title'])
                 if lyrics_result.get('found'):
-                    metadata['lyrics'] = lyrics_result['lyrics']
-                    metadata['lyrics_source'] = lyrics_result['source']
-                    metadata['lyrics_search_date'] = datetime.now().isoformat()
-                    
-                    # Write lyrics to audio file
-                    metadata_extractor.write_lyrics_to_file(file_path, metadata['lyrics'], metadata['lyrics_source'])
+                    # Write lyrics directly to audio file (no database storage)
+                    metadata_extractor.write_lyrics_to_file(file_path, lyrics_result['lyrics'], 'web')
+                    lyrics_added = True
+                    logger.info(f"Lyrics added to {file_path} from {lyrics_result['source']}")
             
-            # Store in database
+            # Store in database (without lyrics)
             file_id = db.add_music_file(metadata_extractor.get_file_info(file_path))
             db.add_metadata(file_id, metadata)
             
@@ -81,8 +80,8 @@ def upload_file():
                 'file_id': file_id,
                 'metadata': metadata,
                 'message': 'File uploaded and processed successfully',
-                'lyrics_found': bool(metadata.get('lyrics')),
-                'lyrics_source': metadata.get('lyrics_source')
+                'lyrics_added': lyrics_added,
+                'lyrics_source': 'web' if lyrics_added else None
             })
         
         return jsonify({'error': 'Invalid file type'}), 400
@@ -216,6 +215,55 @@ def cleanup_database():
         
     except Exception as e:
         logger.error(f"Cleanup error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/add-lyrics/<int:file_id>', methods=['POST'])
+def add_lyrics(file_id):
+    """Add lyrics directly to a specific file - no database storage"""
+    try:
+        # Get file info to update the file
+        file_info = db.get_music_file(file_id)
+        if not file_info:
+            return jsonify({'error': 'File not found'}), 404
+        
+        # Extract existing metadata to get artist and title
+        metadata = db.get_metadata(file_id)
+        if not metadata:
+            return jsonify({'error': 'Metadata not found'}), 404
+        
+        artist = metadata.get('artist', '')
+        title = metadata.get('title', '')
+        
+        if not artist or not title:
+            return jsonify({'error': 'Artist or title not available'}), 400
+        
+        # Search for lyrics
+        lyrics_result = scraper.search_lyrics(artist, title)
+        
+        if lyrics_result.get('found'):
+            # Write lyrics directly to file (no database storage)
+            success = metadata_extractor.write_lyrics_to_file(file_info['file_path'], lyrics_result['lyrics'], 'web')
+            
+            if success:
+                logger.info(f"Lyrics added to {file_info['file_path']} from {lyrics_result['source']}")
+                return jsonify({
+                    'success': True,
+                    'source': lyrics_result['source'],
+                    'message': f'Lyrics added from {lyrics_result["source"]}'
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'message': 'Failed to write lyrics to file'
+                })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'No lyrics found for this song'
+            })
+        
+    except Exception as e:
+        logger.error(f"Lyrics add error: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':

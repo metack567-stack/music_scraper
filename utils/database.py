@@ -51,9 +51,6 @@ class MusicDatabase:
                         total_tracks INTEGER,
                         disc_number INTEGER,
                         total_discs INTEGER,
-                        lyrics TEXT,
-                        lyrics_source TEXT,
-                        lyrics_search_date TEXT,
                         FOREIGN KEY (file_id) REFERENCES music_files (id)
                     )
                 ''')

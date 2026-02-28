@@ -94,11 +94,6 @@ class MusicMetadataExtractor:
                 if audiofile.tag.recording_date:
                     metadata['date'] = metadata.get('date', str(audiofile.tag.recording_date))
                     
-                # Extract existing lyrics if available
-                if hasattr(audiofile.tag, 'lyrics') and audiofile.tag.lyrics:
-                    metadata['lyrics'] = str(audiofile.tag.lyrics)
-                    metadata['lyrics_source'] = 'file'
-                    
                 # Additional info
                 if audiofile.info:
                     metadata['bitrate'] = audiofile.info.bit_rate
