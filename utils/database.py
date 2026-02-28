@@ -51,6 +51,9 @@ class MusicDatabase:
                         total_tracks INTEGER,
                         disc_number INTEGER,
                         total_discs INTEGER,
+                        lyrics TEXT,
+                        lyrics_source TEXT,
+                        lyrics_search_date TEXT,
                         FOREIGN KEY (file_id) REFERENCES music_files (id)
                     )
                 ''')
@@ -122,8 +125,9 @@ class MusicDatabase:
                 cursor.execute('''
                     INSERT OR REPLACE INTO metadata 
                     (file_id, title, artist, album, date, genre, album_artist, 
-                     composer, track_number, total_tracks, disc_number, total_discs)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     composer, track_number, total_tracks, disc_number, total_discs,
+                     lyrics, lyrics_source, lyrics_search_date)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     file_id,
                     metadata.get('title'),
@@ -136,7 +140,10 @@ class MusicDatabase:
                     metadata.get('track_number'),
                     metadata.get('total_tracks'),
                     metadata.get('disc_number'),
-                    metadata.get('total_discs')
+                    metadata.get('total_discs'),
+                    metadata.get('lyrics'),
+                    metadata.get('lyrics_source'),
+                    metadata.get('lyrics_search_date')
                 ))
                 
                 metadata_id = cursor.lastrowid

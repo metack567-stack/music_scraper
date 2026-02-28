@@ -50,6 +50,17 @@ def upload_file():
             # Extract metadata
             metadata = metadata_extractor.extract_metadata(file_path)
             
+            # Search for lyrics
+            if metadata.get('artist') and metadata.get('title'):
+                lyrics_result = scraper.search_lyrics(metadata['artist'], metadata['title'])
+                if lyrics_result.get('found'):
+                    metadata['lyrics'] = lyrics_result['lyrics']
+                    metadata['lyrics_source'] = lyrics_result['source']
+                    metadata['lyrics_search_date'] = datetime.now().isoformat()
+                    
+                    # Write lyrics to audio file
+                    metadata_extractor.write_lyrics_to_file(file_path, metadata['lyrics'], metadata['lyrics_source'])
+            
             # Store in database
             file_id = db.add_music_file(metadata_extractor.get_file_info(file_path))
             db.add_metadata(file_id, metadata)
@@ -69,7 +80,9 @@ def upload_file():
                 'success': True,
                 'file_id': file_id,
                 'metadata': metadata,
-                'message': 'File uploaded and processed successfully'
+                'message': 'File uploaded and processed successfully',
+                'lyrics_found': bool(metadata.get('lyrics')),
+                'lyrics_source': metadata.get('lyrics_source')
             })
         
         return jsonify({'error': 'Invalid file type'}), 400

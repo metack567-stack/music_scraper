@@ -1,7 +1,7 @@
 import os
 import logging
 from mutagen import File
-from mutagen.id3 import ID3, TIT2, TPE1, TALB, TDRC, TCON
+from mutagen.id3 import ID3, TIT2, TPE1, TALB, TDRC, TCON, USLT
 from mutagen.mp4 import MP4, MP4Cover
 import eyed3
 from datetime import datetime
@@ -94,6 +94,11 @@ class MusicMetadataExtractor:
                 if audiofile.tag.recording_date:
                     metadata['date'] = metadata.get('date', str(audiofile.tag.recording_date))
                     
+                # Extract existing lyrics if available
+                if hasattr(audiofile.tag, 'lyrics') and audiofile.tag.lyrics:
+                    metadata['lyrics'] = str(audiofile.tag.lyrics)
+                    metadata['lyrics_source'] = 'file'
+                    
                 # Additional info
                 if audiofile.info:
                     metadata['bitrate'] = audiofile.info.bit_rate
@@ -101,6 +106,160 @@ class MusicMetadataExtractor:
                     
         except Exception as e:
             logger.error(f"Error extracting eyed3 metadata: {str(e)}")
+    
+    def write_lyrics_to_file(self, file_path, lyrics):
+        """Write lyrics to audio file tags"""
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+        
+        try:
+            file_ext = os.path.splitext(file_path)[1].lower()[1:]
+            audio_file = File(file_path)
+            
+            if audio_file is None:
+                raise ValueError(f"Unsupported audio format: {file_ext}")
+            
+            if file_ext == 'mp3':
+                self._write_lyrics_mp3(file_path, lyrics)
+            elif file_ext == 'flac':
+                self._write_lyrics_flac(audio_file, lyrics)
+            elif file_ext == 'm4a':
+                self._write_lyrics_m4a(audio_file, lyrics)
+            else:
+                logger.warning(f"Lyrics writing not supported for format: {file_ext}")
+                
+            logger.info(f"Successfully wrote lyrics to {file_path}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error writing lyrics to {file_path}: {str(e)}")
+            return False
+    
+    def _write_lyrics_mp3(self, file_path, lyrics):
+        """Write lyrics to MP3 file using ID3 tags"""
+        try:
+            audiofile = eyed3.load(file_path)
+            if audiofile is None:
+                audiofile = eyed3.load(file_path)
+                audiofile.initTag()
+            
+            if audiofile.tag:
+                # Clear existing lyrics
+                audiofile.tag.lyrics.set([])
+                # Add new lyrics
+                audiofile.tag.lyrics.set([lyrics])
+                audiofile.tag.save()
+            
+            # Also use mutagen for compatibility
+            audio_file = File(file_path)
+            if isinstance(audio_file, ID3):
+                audio_file.add(USLT(encoding=3, lang='eng', desc='Lyrics', text=lyrics))
+                audio_file.save()
+                
+        except Exception as e:
+            logger.error(f"Error writing lyrics to MP3: {str(e)}")
+            raise
+    
+    def _write_lyrics_flac(self, audio_file, lyrics):
+        """Write lyrics to FLAC file using Vorbis comments"""
+        if hasattr(audio_file, 'tags') and audio_file.tags:
+            audio_file.tags['LYRICS'] = lyrics
+            audio_file.save()
+    
+    def _write_lyrics_m4a(self, audio_file, lyrics):
+        """Write lyrics to M4A file using iTunes-style tags"""
+        if hasattr(audio_file, 'tags') and audio_file.tags:
+            # Use iTunes lyrics tag
+            audio_file.tags['----:com.apple.iTunes:Lyrics'] = lyrics
+            audio_file.save()
+    
+    def write_lyrics_to_file(self, file_path, lyrics, lyrics_source="web"):
+        """Write lyrics to audio file tags"""
+        try:
+            if not os.path.exists(file_path):
+                return False
+            
+            file_ext = os.path.splitext(file_path)[1].lower()[1:]
+            audio_file = File(file_path)
+            
+            if audio_file is None:
+                return False
+            
+            # Write lyrics based on file format
+            if file_ext == 'mp3':
+                return self._write_lyrics_to_mp3(file_path, lyrics, lyrics_source)
+            elif file_ext == 'flac':
+                return self._write_lyrics_to_flac(file_path, lyrics, lyrics_source)
+            elif file_ext == 'm4a':
+                return self._write_lyrics_to_m4a(file_path, lyrics, lyrics_source)
+            elif file_ext == 'ogg':
+                return self._write_lyrics_to_ogg(file_path, lyrics, lyrics_source)
+            else:
+                logger.warning(f"Unsupported format for lyrics writing: {file_ext}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error writing lyrics to file: {str(e)}")
+            return False
+    
+    def _write_lyrics_to_mp3(self, file_path, lyrics, source):
+        """Write lyrics to MP3 file using ID3 tags"""
+        try:
+            audio_file = File(file_path)
+            if isinstance(audio_file, ID3):
+                # Add unsynchronized lyrics
+                audio_file.add(USLT(encoding=3, lang='eng', desc=f'Lyrics ({source})', text=lyrics))
+                audio_file.save()
+                return True
+            else:
+                # Add ID3 tag if none exists
+                audio_file.add_tags()
+                audio_file.add(USLT(encoding=3, lang='eng', desc=f'Lyrics ({source})', text=lyrics))
+                audio_file.save()
+                return True
+        except Exception as e:
+            logger.error(f"Error writing lyrics to MP3: {str(e)}")
+            return False
+    
+    def _write_lyrics_to_flac(self, file_path, lyrics, source):
+        """Write lyrics to FLAC file"""
+        try:
+            audio_file = File(file_path)
+            if hasattr(audio_file, 'tags') and audio_file.tags:
+                audio_file.tags['LYRICS'] = lyrics
+                audio_file.tags['LYRICSSOURCE'] = source
+                audio_file.save()
+                return True
+        except Exception as e:
+            logger.error(f"Error writing lyrics to FLAC: {str(e)}")
+            return False
+    
+    def _write_lyrics_to_m4a(self, file_path, lyrics, source):
+        """Write lyrics to M4A file"""
+        try:
+            audio_file = File(file_path)
+            if hasattr(audio_file, 'tags') and audio_file.tags:
+                # MP4 format uses custom tags
+                audio_file.tags['----:com.apple.iTunes:Lyrics'] = lyrics
+                audio_file.tags['----:com.apple.iTunes:LyricsSource'] = source
+                audio_file.save()
+                return True
+        except Exception as e:
+            logger.error(f"Error writing lyrics to M4A: {str(e)}")
+            return False
+    
+    def _write_lyrics_to_ogg(self, file_path, lyrics, source):
+        """Write lyrics to OGG file"""
+        try:
+            audio_file = File(file_path)
+            if hasattr(audio_file, 'tags') and audio_file.tags:
+                audio_file.tags['LYRICS'] = lyrics
+                audio_file.tags['LYRICSSOURCE'] = source
+                audio_file.save()
+                return True
+        except Exception as e:
+            logger.error(f"Error writing lyrics to OGG: {str(e)}")
+            return False
     
     def get_file_info(self, file_path):
         """Get basic file information"""
