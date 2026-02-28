@@ -2,22 +2,30 @@ version: '3.8'
 
 services:
   music-scraper:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: music-scraper
     restart: unless-stopped
     ports:
       - "5000:5000"
     volumes:
-      # 挂载上传目录
+      # 挂载上传目录 - 映射到宿主机
       - ./uploads:/app/uploads
-      # 挂载数据库目录
+      # 挂载数据库目录 - 持久化数据
       - ./database:/app/database
       # 挂载配置文件（可选）
-      - ./config.py:/app/config.py
+      - ./config.py:/app/config.py:ro
     environment:
+      # Flask配置
       - FLASK_ENV=production
+      - FLASK_APP=app.py
+      # 数据库路径
       - DATABASE_PATH=/app/database/music_metadata.db
+      # 上传目录
       - UPLOAD_FOLDER=/app/uploads
+      # 日志级别
+      - LOG_LEVEL=INFO
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/api/stats"]
       interval: 30s
@@ -27,7 +35,7 @@ services:
     networks:
       - music-network
 
-  # 可选：添加Nginx反向代理
+  # 可选：Nginx反向代理
   nginx:
     image: nginx:alpine
     container_name: music-scraper-nginx

@@ -1,272 +1,231 @@
-# 🚀 部署指南
+# Docker部署指南
 
-音乐刮削程序已经成功部署到 GitHub，可以通过多种方式进行部署。
+## 📦 快速开始
 
-## 🐳 Docker 部署 (推荐)
-
-### 方法 1: Docker Compose (最简单)
-
+### 1. 基本部署（单容器）
 ```bash
-# 克隆仓库
-git clone https://github.com/metack567-stack/music_scraper.git
+# 克隆或复制项目到本地
+git clone <repository-url>
 cd music_scraper
 
-# 启动服务
+# 构建并启动
 docker-compose up -d
 
-# 查看日志
-docker-compose logs -f
+# 检查状态
+docker-compose ps
 ```
 
-### 方法 2: 直接使用 Docker
-
+### 2. 生产环境部署（带Nginx）
 ```bash
-# 克隆仓库
-git clone https://github.com/metack567-stack/music_scraper.git
-cd music_scraper
+# 使用生产环境配置
+docker-compose -f docker-compose.prod.yml up -d
 
-# 构建镜像
-docker build -t music-scraper .
-
-# 运行容器
-docker run -d -p 5000:5000 -v $(pwd)/uploads:/app/uploads -v $(pwd)/music_metadata.db:/app/music_metadata.db music-scraper
+# 包含Nginx反向代理
+docker-compose -f docker-compose.prod.yml --profile nginx up -d
 ```
 
-### 方法 3: Docker 网络
-
+### 3. 开发环境
 ```bash
-# 创建自定义网络
-docker network create music-scraper-net
-
-# 运行应用
-docker run -d --name music-scraper --network music-scraper-net -p 5000:5000 -v $(pwd)/uploads:/app/uploads music-scraper
-
-# 可选: 运行数据库 (如果需要)
-docker run -d --name music-scraper-db --network music-scraper-net -v $(pwd)/data:/data sqlite3
+# 使用开发环境配置
+docker-compose -f docker-compose.dev.yml up -d
 ```
 
-## 💻 本地部署
+## 🔧 配置说明
 
-### Linux/MacOS
-
+### 环境变量配置
 ```bash
-# 克隆仓库
-git clone https://github.com/metack567-stack/music_scraper.git
-cd music_scraper
+# 复制环境变量模板
+cp .env.example .env
 
-# 一键设置
-chmod +x setup.sh
-./setup.sh
-
-# 启动应用
-./start.sh
+# 编辑环境变量
+vim .env
 ```
 
-### Windows
+主要环境变量：
+- `FLASK_ENV`: 运行环境 (development/production)
+- `DATABASE_PATH`: 数据库文件路径
+- `UPLOAD_FOLDER`: 上传文件目录
+- `LOG_LEVEL`: 日志级别
+- `MAX_CONTENT_LENGTH`: 最大文件上传大小
 
-```batch
-# 克隆仓库
-git clone https://github.com/metack567-stack/music_scraper.git
-cd music_scraper
-
-# 一键设置
-setup.bat
-
-# 启动应用
-start.bat
-```
-
-### 手动安装
-
+### 数据持久化
 ```bash
-# 克隆仓库
-git clone https://github.com/metack567-stack/music_scraper.git
-cd music_scraper
-
-# 创建虚拟环境
-python3 -m venv venv
-source venv/bin/activate  # Linux/Mac
-# 或 venv\\Scripts\\activate  # Windows
-
-# 安装依赖
-pip install -r requirements.txt
-
-# 创建必要的目录
-mkdir -p uploads
-
-# 启动应用
-python app.py
+# 数据目录映射
+./uploads:/app/uploads     # 上传文件
+./database:/app/database   # 数据库文件
+./logs:/app/logs           # 日志文件
 ```
 
-## ⚡ 快速启动脚本
+## 🚀 使用方法
 
-### 一键启动 (所有平台)
-
+### 1. 查看服务状态
 ```bash
-# Linux/MacOS
-curl -sSL https://raw.githubusercontent.com/metack567-stack/music_scraper/main/quick_start.sh | bash
-
-# Windows
-powershell -ExecutionPolicy Bypass -Command "iwr -useb https://raw.githubusercontent.com/metack567-stack/music_scraper/main/quick_start.ps1 | iex"
+docker-compose ps
+docker-compose logs -f music-scraper
 ```
 
-## 🔧 配置选项
+### 2. 访问服务
+- 本地访问：http://localhost:5000
+- 带Nginx：http://localhost:80
 
-### 环境变量
-
-在 `.env` 文件中设置：
-
-```env
-FLASK_ENV=production
-SECRET_KEY=your-production-secret-key-here
-MAX_CONTENT_LENGTH=16777216  # 16MB
-DATABASE_PATH=./music_metadata.db
-```
-
-### 配置文件
-
-编辑 `config.py` 来自定义设置：
-
-```python
-class Config:
-    # 文件上传限制
-    MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB
-    
-    # 支持的音频格式
-    ALLOWED_EXTENSIONS = {'mp3', 'flac', 'm4a', 'ogg', 'wav'}
-    
-    # 数据库路径
-    DATABASE_PATH = 'music_metadata.db'
-    
-    # API 设置
-    TIMEOUT = 30
-    RETRY_COUNT = 3
-```
-
-## 🌐 访问应用
-
-启动成功后，访问以下地址：
-
-- **本地**: http://localhost:5000
-- **网络**: http://your-server-ip:5000
-
-## 🔍 监控和维护
-
-### Docker 容器管理
-
+### 3. 健康检查
 ```bash
-# 查看容器状态
-docker ps
+# 检查服务状态
+curl http://localhost:5000/api/stats
 
-# 查看日志
-docker logs music-scraper
+# 检查健康状态
+curl http://localhost/health
+```
 
-# 停止服务
+### 4. 更新部署
+```bash
+# 拉取最新代码
+git pull
+
+# 重新构建并重启
+docker-compose up -d --build
+
+# 或者
 docker-compose down
-
-# 重启服务
-docker-compose restart
-
-# 更新到最新版本
-docker-compose pull
 docker-compose up -d
 ```
 
-### 本地服务管理
+## 🔧 高级配置
 
-```bash
-# 查看进程
-ps aux | grep app.py
-
-# 停止服务
-pkill -f app.py
-
-# 查看日志
-tail -f app.log
-```
-
-## 📊 性能优化
-
-### 1. 生产环境配置
-
-```python
-# config.py
-class ProductionConfig(Config):
-    SECRET_KEY = os.environ.get('SECRET_KEY')
-    DEBUG = False
-    SQLALCHEMY_DATABASE_URI = 'postgresql://user:password@localhost/music_scraper'
-```
-
-### 2. 反向代理配置 (Nginx)
-
-```nginx
-server {
-    listen 80;
-    server_name your-domain.com;
-    
-    location / {
-        proxy_pass http://localhost:5000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-}
-```
-
-### 3. 负载均衡
-
+### 1. 自定义端口
 ```yaml
 # docker-compose.yml
-version: '3.8'
-services:
-  music-scraper:
-    deploy:
-      replicas: 3
-    build: .
-    ports:
-      - "5000:5000"
+ports:
+  - "8080:5000"  # 修改宿主机端口
 ```
 
-## 🔐 安全配置
+### 2. 扩展服务
+```yaml
+# 扩展线程数
+environment:
+  - PROCESS_MAX_WORKERS=8
+```
 
-1. **修改默认密钥**:
-   ```python
-   SECRET_KEY = 'your-strong-secret-key-here'
-   ```
+### 3. 自定义域名
+```nginx
+# nginx.conf
+server_name your-domain.com;
+```
 
-2. **设置文件上传限制**:
-   ```python
-   MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB
-   ```
+## 📊 监控和维护
 
-3. **使用 HTTPS**:
-   ```python
-   from flask_sslify import SSLify
-   app.wsgi_app = SSLify(app)
-   ```
+### 1. 日志管理
+```bash
+# 查看所有日志
+docker-compose logs
 
-## 🔄 备份和维护
+# 查看特定服务日志
+docker-compose logs -f music-scraper
 
-### 数据库备份
+# 查看最后100行
+docker-compose logs --tail=100 music-scraper
+```
 
+### 2. 资源监控
+```bash
+# 查看容器资源使用情况
+docker stats
+
+# 查看容器详细信息
+docker inspect music-scraper
+```
+
+### 3. 数据备份
 ```bash
 # 备份数据库
-cp music_metadata.db backup/music_metadata_$(date +%Y%m%d).db
+docker exec music-scraper cp /app/database/music_metadata.db ./backup/
 
-# 自动备份脚本
-crontab -e
-# 添加: 0 2 * * * cp /path/to/music_metadata.db /backup/path/music_metadata_$(date +\%Y\%m\%d).db
+# 备份上传文件
+docker cp music-scraper:/app/uploads ./backup/
 ```
 
-### 日志轮转
+### 4. 数据恢复
+```bash
+# 恢复数据库
+docker exec music-scraper cp ./backup/music_metadata.db /app/database/
 
-```python
-import logging
-from logging.handlers import RotatingFileHandler
-
-handler = RotatingFileHandler('app.log', maxBytes=10000, backupCount=3)
-app.logger.addHandler(handler)
+# 恢复上传文件
+docker cp ./backup/uploads music-scraper:/app/
 ```
 
----
+## 🛡️ 安全配置
 
-**享受音乐整理的乐趣！🎵**
+### 1. 生产环境安全
+```yaml
+# 生产环境配置
+environment:
+  - FLASK_ENV=production
+  - SECRET_KEY=your-secure-secret-key
+  - LOG_LEVEL=ERROR
+
+# 禁用调试模式
+command: python app.py
+```
+
+### 2. 网络安全
+```yaml
+# 限制网络访问
+ports:
+  - "127.0.0.1:5000:5000"
+
+# 或者使用SSH隧道
+ssh -L 5000:localhost:5000 user@server
+```
+
+### 3. 文件权限
+```bash
+# 设置正确的文件权限
+docker exec music-scraper chmod 755 /app
+docker exec music-scraper chown -R www-data:www-data /app
+```
+
+## 🔧 故障排除
+
+### 常见问题
+
+1. **端口占用**
+   ```bash
+   # 检查端口占用
+   netstat -tulpn | grep :5000
+   
+   # 修改端口映射
+   ports:
+     - "5001:5000"
+   ```
+
+2. **权限问题**
+   ```bash
+   # 检查容器权限
+   docker exec music-scraper ls -la /app/uploads
+   
+   # 修复权限
+   docker exec music-scraper chown -R www-data:www-data /app/uploads
+   ```
+
+3. **数据库问题**
+   ```bash
+   # 检查数据库文件
+   docker exec music-scraper ls -la /app/database/
+   
+   # 重启服务
+   docker-compose restart music-scraper
+   ```
+
+### 重置环境
+```bash
+# 完全重置
+docker-compose down -v
+docker-compose up -d --build
+```
+
+## 📚 相关文档
+
+- [Docker Compose 文档](https://docs.docker.com/compose/)
+- [Flask 文档](https://flask.palletsprojects.com/)
+- [Nginx 反向代理配置](https://nginx.org/en/docs/)
+- [Docker 最佳实践](https://docs.docker.com/develop/)

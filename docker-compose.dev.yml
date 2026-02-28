@@ -1,0 +1,34 @@
+# Docker开发环境配置
+version: '3.8'
+
+services:
+  music-scraper:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: music-scraper-dev
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+      - "5001:5001"  # 用于调试端口
+    volumes:
+      # 挂载源代码
+      - .:/app
+      # 挂载上传目录
+      - ./uploads:/app/uploads
+      # 挂载数据库目录
+      - ./database:/app/database
+    environment:
+      # 开发环境配置
+      - FLASK_ENV=development
+      - FLASK_DEBUG=1
+      - DATABASE_PATH=/app/database/music_metadata.db
+      - UPLOAD_FOLDER=/app/uploads
+      - LOG_LEVEL=DEBUG
+    command: python app.py
+    networks:
+      - music-network
+
+networks:
+  music-network:
+    driver: bridge
