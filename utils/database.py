@@ -31,7 +31,8 @@ class MusicDatabase:
                         bitrate INTEGER,
                         created_at TEXT,
                         modified_at TEXT,
-                        processed_at TEXT
+                        processed_at TEXT,
+                        processing_status TEXT DEFAULT 'pending'
                     )
                 ''')
                 
@@ -263,3 +264,260 @@ class MusicDatabase:
         except sqlite3.Error as e:
             logger.error(f"Error getting file count: {str(e)}")
             return 0
+    
+    def update_music_file(self, file_id: int, update_data: Dict):
+        """Update existing music file information"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Build update query dynamically
+                set_clause = []
+                values = []
+                
+                for key, value in update_data.items():
+                    set_clause.append(f"{key} = ?")
+                    values.append(value)
+                
+                if set_clause:
+                    query = f"UPDATE music_files SET {', '.join(set_clause)} WHERE id = ?"
+                    values.append(file_id)
+                    
+                    cursor.execute(query, values)
+                    conn.commit()
+                    return cursor.rowcount > 0
+                
+                return False
+                
+        except sqlite3.Error as e:
+            logger.error(f"Error updating music file: {str(e)}")
+            raise
+    
+    def get_files_grouped_by_artist(self):
+        """Get files grouped by artist"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT m.artist, mf.id, mf.file_path, mf.file_name
+                    FROM metadata m
+                    JOIN music_files mf ON m.file_id = mf.id
+                    WHERE m.artist IS NOT NULL AND m.artist != ''
+                    ORDER BY m.artist, m.album, m.track_number
+                ''')
+                
+                result = cursor.fetchall()
+                grouped = {}
+                
+                for row in result:
+                    artist = row[0]
+                    file_info = {
+                        'id': row[1],
+                        'file_path': row[2],
+                        'file_name': row[3]
+                    }
+                    
+                    if artist not in grouped:
+                        grouped[artist] = []
+                    grouped[artist].append(file_info)
+                
+                return grouped
+                
+        except sqlite3.Error as e:
+            logger.error(f"Error getting files grouped by artist: {str(e)}")
+            return {}
+    
+    def get_files_grouped_by_album(self):
+        """Get files grouped by album"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT m.album, mf.id, mf.file_path, mf.file_name
+                    FROM metadata m
+                    JOIN music_files mf ON m.file_id = mf.id
+                    WHERE m.album IS NOT NULL AND m.album != ''
+                    ORDER BY m.album, m.disc_number, m.track_number
+                ''')
+                
+                result = cursor.fetchall()
+                grouped = {}
+                
+                for row in result:
+                    album = row[0]
+                    file_info = {
+                        'id': row[1],
+                        'file_path': row[2],
+                        'file_name': row[3]
+                    }
+                    
+                    if album not in grouped:
+                        grouped[album] = []
+                    grouped[album].append(file_info)
+                
+                return grouped
+                
+        except sqlite3.Error as e:
+            logger.error(f"Error getting files grouped by album: {str(e)}")
+            return {}
+    
+    def find_duplicate_files(self):
+        """Find duplicate files based on file name and size"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT file_name, file_size, id, file_path, file_name
+                    FROM music_files
+                    WHERE file_size > 0
+                    ORDER BY file_name, file_size
+                ''')
+                
+                result = cursor.fetchall()
+                duplicates = []
+                
+                current_group = []
+                current_name = None
+                
+                for row in result:
+                    file_name, file_size, file_id, file_path, display_name = row
+                    
+                    if file_name != current_name:
+                        if len(current_group) > 1:
+                            duplicates.append(current_group)
+                        current_group = []
+                        current_name = file_name
+                    
+                    current_group.append({
+                        'file_name': display_name,
+                        'file_size': file_size,
+                        'id': file_id,
+                        'file_path': file_path
+                    })
+                
+                # Add the last group
+                if len(current_group) > 1:
+                    duplicates.append(current_group)
+                
+                return duplicates
+                
+        except sqlite3.Error as e:
+            logger.error(f"Error finding duplicate files: {str(e)}")
+            return []
+    
+    def delete_music_file(self, file_id: int):
+        """Delete music file from database"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('DELETE FROM metadata WHERE file_id = ?', (file_id,))
+                cursor.execute('DELETE FROM music_files WHERE id = ?', (file_id,))
+                conn.commit()
+                return cursor.rowcount > 0
+                
+        except sqlite3.Error as e:
+            logger.error(f"Error deleting music file: {str(e)}")
+            return False
+    
+    def get_files_by_status(self, status: str):
+        """Get files by processing status"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT mf.id, mf.file_path, mf.file_name, mf.format, 
+                           m.title, m.artist, m.album, m.date
+                    FROM music_files mf
+                    LEFT JOIN metadata m ON mf.id = m.file_id
+                    WHERE mf.processing_status = ?
+                    ORDER BY mf.processed_at DESC
+                ''', (status,))
+                
+                columns = ['id', 'file_path', 'file_name', 'format', 
+                          'title', 'artist', 'album', 'date']
+                return [dict(zip(columns, row)) for row in cursor.fetchall()]
+                
+        except sqlite3.Error as e:
+            logger.error(f"Error getting files by status: {str(e)}")
+            raise
+    
+    def get_files_by_artist(self, artist: str):
+        """Get files by artist name"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT mf.id, mf.file_path, mf.file_name, mf.format,
+                           m.title, m.album, m.date
+                    FROM music_files mf
+                    JOIN metadata m ON mf.id = m.file_id
+                    WHERE m.artist LIKE ?
+                    ORDER BY m.album, m.track_number
+                ''', (f"%{artist}%",))
+                
+                columns = ['id', 'file_path', 'file_name', 'format',
+                          'title', 'album', 'date']
+                return [dict(zip(columns, row)) for row in cursor.fetchall()]
+                
+        except sqlite3.Error as e:
+            logger.error(f"Error getting files by artist: {str(e)}")
+            raise
+    
+    def get_files_by_album(self, album: str):
+        """Get files by album name"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT mf.id, mf.file_path, mf.file_name, mf.format,
+                           m.title, m.artist, m.date
+                    FROM music_files mf
+                    JOIN metadata m ON mf.id = m.file_id
+                    WHERE m.album LIKE ?
+                    ORDER BY m.disc_number, m.track_number
+                ''', (f"%{album}%",))
+                
+                columns = ['id', 'file_path', 'file_name', 'format',
+                          'title', 'artist', 'date']
+                return [dict(zip(columns, row)) for row in cursor.fetchall()]
+                
+        except sqlite3.Error as e:
+            logger.error(f"Error getting files by album: {str(e)}")
+            raise
+    
+    def get_processing_stats(self):
+        """Get processing statistics"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Count files by status
+                cursor.execute('''
+                    SELECT processing_status, COUNT(*) as count
+                    FROM music_files
+                    GROUP BY processing_status
+                ''')
+                
+                status_counts = dict(cursor.fetchall())
+                
+                # Get total processing time
+                cursor.execute('''
+                    SELECT AVG(strftime('%s', processed_at) - strftime('%s', created_at)) as avg_time
+                    FROM music_files
+                    WHERE processed_at IS NOT NULL
+                ''')
+                
+                avg_time = cursor.fetchone()[0] or 0
+                
+                return {
+                    'total_files': sum(status_counts.values()),
+                    'pending_files': status_counts.get('pending', 0),
+                    'processing_files': status_counts.get('processing', 0),
+                    'completed_files': status_counts.get('completed', 0),
+                    'failed_files': status_counts.get('failed', 0),
+                    'average_processing_time': round(avg_time, 2)
+                }
+                
+        except sqlite3.Error as e:
+            logger.error(f"Error getting processing stats: {str(e)}")
+            raise

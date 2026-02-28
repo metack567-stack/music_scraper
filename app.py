@@ -8,8 +8,10 @@ from datetime import datetime
 # Import our modules
 from config import Config, allowed_file
 from utils.metadata import MusicMetadataExtractor
+from utils.organizer import MusicOrganizer
 from utils.scraper import MusicScraper
 from utils.database import MusicDatabase
+from utils.organizer import MusicOrganizer
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -25,6 +27,9 @@ db = MusicDatabase(app.config['DATABASE_PATH'])
 
 # Ensure upload folder exists
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
+# Initialize organizer
+organizer = MusicOrganizer(app.config['DATABASE_PATH'])
 
 @app.route('/')
 def index():
@@ -156,12 +161,21 @@ def get_stats():
     try:
         total_files = db.get_file_count()
         
+        # Get processing progress if organizer is available
+        processing_progress = None
+        try:
+            organizer = MusicOrganizer()
+            processing_progress = organizer.get_processing_progress()
+        except:
+            pass
+        
         return jsonify({
             'success': True,
             'total_files': total_files,
             'supported_formats': list(Config.ALLOWED_EXTENSIONS),
             'database_path': app.config['DATABASE_PATH'],
-            'upload_folder': app.config['UPLOAD_FOLDER']
+            'upload_folder': app.config['UPLOAD_FOLDER'],
+            'processing_progress': processing_progress
         })
         
     except Exception as e:
@@ -230,6 +244,169 @@ def cleanup_database():
         
     except Exception as e:
         logger.error(f"Cleanup error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+# Music Organization Routes
+@app.route('/api/organizer/scan-directory', methods=['POST'])
+def scan_directory():
+    """Scan a directory for music files"""
+    try:
+        data = request.get_json()
+        directory = data.get('directory', '')
+        recursive = data.get('recursive', True)
+        
+        if not directory:
+            return jsonify({'error': 'Directory path is required'}), 400
+        
+        if not os.path.exists(directory):
+            return jsonify({'error': 'Directory does not exist'}), 400
+        
+        # Scan directory
+        organizer = MusicOrganizer()
+        found_files = organizer.scan_directory(directory, recursive)
+        
+        return jsonify({
+            'success': True,
+            'found_files': len(found_files),
+            'files': found_files,
+            'message': f'Found {len(found_files)} music files'
+        })
+        
+    except Exception as e:
+        logger.error(f"Scan directory error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/organizer/process-files', methods=['POST'])
+def process_files():
+    """Process multiple music files"""
+    try:
+        data = request.get_json()
+        file_paths = data.get('files', [])
+        max_workers = data.get('max_workers', 4)
+        
+        if not file_paths:
+            return jsonify({'error': 'No files to process'}), 400
+        
+        # Process files
+        organizer = MusicOrganizer()
+        results = organizer.batch_process_files(file_paths, max_workers)
+        
+        return jsonify({
+            'success': True,
+            **results,
+            'message': f'Processed {results["processed_files"]} files'
+        })
+        
+    except Exception as e:
+        logger.error(f"Process files error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/organizer/organize-by-artist', methods=['POST'])
+def organize_by_artist():
+    """Organize music files by artist"""
+    try:
+        data = request.get_json()
+        target_directory = data.get('target_directory', '/tmp/organized_music')
+        
+        if not target_directory:
+            return jsonify({'error': 'Target directory is required'}), 400
+        
+        # Create target directory if it doesn't exist
+        os.makedirs(target_directory, exist_ok=True)
+        
+        # Organize files
+        organizer = MusicOrganizer()
+        result = organizer.organize_by_artist(target_directory)
+        
+        return jsonify({
+            'success': True,
+            **result
+        })
+        
+    except Exception as e:
+        logger.error(f"Organize by artist error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/organizer/organize-by-album', methods=['POST'])
+def organize_by_album():
+    """Organize music files by album"""
+    try:
+        data = request.get_json()
+        target_directory = data.get('target_directory', '/tmp/organized_music')
+        
+        if not target_directory:
+            return jsonify({'error': 'Target directory is required'}), 400
+        
+        # Create target directory if it doesn't exist
+        os.makedirs(target_directory, exist_ok=True)
+        
+        # Organize files
+        organizer = MusicOrganizer()
+        result = organizer.organize_by_album(target_directory)
+        
+        return jsonify({
+            'success': True,
+            **result
+        })
+        
+    except Exception as e:
+        logger.error(f"Organize by album error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/organizer/cleanup-duplicates', methods=['POST'])
+def cleanup_duplicates():
+    """Clean up duplicate files"""
+    try:
+        # Clean up duplicates
+        organizer = MusicOrganizer()
+        result = organizer.cleanup_duplicate_files()
+        
+        return jsonify({
+            'success': True,
+            **result
+        })
+        
+    except Exception as e:
+        logger.error(f"Cleanup duplicates error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/organizer/directory-stats', methods=['POST'])
+def directory_stats():
+    """Get directory statistics"""
+    try:
+        data = request.get_json()
+        directory = data.get('directory', '')
+        
+        if not directory:
+            return jsonify({'error': 'Directory is required'}), 400
+        
+        if not os.path.exists(directory):
+            return jsonify({'error': 'Directory does not exist'}), 400
+        
+        # Get directory statistics
+        organizer = MusicOrganizer()
+        result = organizer.get_directory_stats(directory)
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        logger.error(f"Directory stats error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/organizer/progress')
+def get_progress():
+    """Get processing progress"""
+    try:
+        organizer = MusicOrganizer()
+        progress = organizer.get_processing_progress()
+        
+        return jsonify({
+            'success': True,
+            'progress': progress
+        })
+        
+    except Exception as e:
+        logger.error(f"Get progress error: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/add-lyrics/<int:file_id>', methods=['POST'])
