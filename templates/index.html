@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>音乐刮削器 - Music Scraper</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎵 音乐刮削器</h1>
+            <p>自动提取和标注音乐文件元数据</p>
+        </header>
+
+        <div class="main-content">
+            <!-- Upload Section -->
+            <section class="upload-section">
+                <h2>上传音乐文件</h2>
+                <div class="upload-area" id="dropZone">
+                    <input type="file" id="fileInput" accept=".mp3,.flac,.m4a,.ogg,.wav" multiple>
+                    <div class="upload-placeholder">
+                        <p>📁</p>
+                        <p>拖拽文件到这里或点击选择文件</p>
+                        <p class="supported-formats">支持格式: MP3, FLAC, M4A, OGG, WAV</p>
+                    </div>
+                </div>
+                <div id="uploadProgress" class="hidden">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <p id="uploadStatus">正在处理...</p>
+                </div>
+            </section>
+
+            <!-- Search Section -->
+            <section class="search-section">
+                <h2>搜索音乐</h2>
+                <div class="search-container">
+                    <input type="text" id="searchInput" placeholder="搜索艺术家、歌曲或专辑...">
+                    <button id="searchBtn" onclick="searchMusic()">搜索</button>
+                </div>
+                <div id="searchResults" class="results-container"></div>
+            </section>
+
+            <!-- Files Section -->
+            <section class="files-section">
+                <h2>音乐库</h2>
+                <div class="section-controls">
+                    <button onclick="loadFiles()" class="btn btn-primary">刷新列表</button>
+                    <button onclick="showScanFolder()" class="btn btn-secondary">扫描文件夹</button>
+                    <span id="fileCount" class="file-count">总计: 0 个文件</span>
+                </div>
+                <div id="filesList" class="files-container"></div>
+            </section>
+
+            <!-- Statistics Section -->
+            <section class="stats-section">
+                <h2>统计信息</h2>
+                <div id="statsContainer" class="stats-container">
+                    <div class="stat-card">
+                        <h3>总文件数</h3>
+                        <div id="totalFiles" class="stat-value">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>支持的格式</h3>
+                        <div class="stat-formats">
+                            <span>MP3</span>
+                            <span>FLAC</span>
+                            <span>M4A</span>
+                            <span>OGG</span>
+                            <span>WAV</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>数据库</h3>
+                        <div id="dbStatus" class="stat-value">正常</div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- Scan Folder Modal -->
+        <div id="scanModal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>扫描文件夹</h3>
+                    <button class="close-btn" onclick="closeScanModal()">×</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="folderPath">文件夹路径:</label>
+                        <input type="text" id="folderPath" placeholder="输入要扫描的文件夹路径...">
+                    </div>
+                    <div class="modal-buttons">
+                        <button onclick="scanFolder()" class="btn btn-primary">开始扫描</button>
+                        <button onclick="closeScanModal()" class="btn btn-secondary">取消</button>
+                    </div>
+                    <div id="scanProgress" class="hidden">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="scanProgressFill"></div>
+                        </div>
+                        <p id="scanStatus">正在扫描...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
